@@ -18,10 +18,11 @@ from torch.nn.modules.utils import _pair
 from scipy import ndimage
 from . import vit_seg_configs as configs
 from .vit_seg_modeling_resnet_skip import ResNetV2
-
+# import vit_seg_configs as configs
+# from vit_seg_modeling_resnet_skip import ResNetV2
 
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.INFO)
 
 ATTENTION_Q = "MultiHeadDotProductAttention_1/query"
 ATTENTION_K = "MultiHeadDotProductAttention_1/key"
@@ -132,7 +133,7 @@ class Embeddings(nn.Module):
             grid_size = config.patches["grid"]
             patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])
             patch_size_real = (patch_size[0] * 16, patch_size[1] * 16)
-            n_patches = (img_size[0] // patch_size_real[0]) * (img_size[1] // patch_size_real[1])  
+            n_patches = (img_size[0] // patch_size_real[0]) * (img_size[1] // patch_size_real[1])
             self.hybrid = True
         else:
             patch_size = _pair(config.patches["size"])
@@ -245,9 +246,9 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis):
+    def __init__(self, config, img_size, vis, in_channels):
         super(Transformer, self).__init__()
-        self.embeddings = Embeddings(config, img_size=img_size)
+        self.embeddings = Embeddings(config, img_size=img_size, in_channels=in_channels)
         self.encoder = Encoder(config, vis)
 
     def forward(self, input_ids):
@@ -296,7 +297,7 @@ class DecoderBlock(nn.Module):
             kernel_size=3,
             padding=1,
             use_batchnorm=use_batchnorm,
-        )
+            )
         self.conv2 = Conv2dReLU(
             out_channels,
             out_channels,
@@ -338,10 +339,10 @@ class DecoderCup(nn.Module):
         decoder_channels = config.decoder_channels
         in_channels = [head_channels] + list(decoder_channels[:-1])
         out_channels = decoder_channels
-
-        if self.config.n_skip != 0:
+        self.n_skip = getattr(self.config, 'n_skip', 0)  # Default to 0 if not present
+        if self.n_skip != 0:
             skip_channels = self.config.skip_channels
-            for i in range(4-self.config.n_skip):  # re-select the skip channels according to n_skip
+            for i in range(4-self.n_skip):  # re-select the skip channels according to n_skip
                 skip_channels[3-i]=0
 
         else:
@@ -360,7 +361,7 @@ class DecoderCup(nn.Module):
         x = self.conv_more(x)
         for i, decoder_block in enumerate(self.blocks):
             if features is not None:
-                skip = features[i] if (i < self.config.n_skip) else None
+                skip = features[i] if (i < self.n_skip) else None
             else:
                 skip = None
             x = decoder_block(x, skip=skip)
@@ -373,7 +374,7 @@ class VisionTransformer(nn.Module):
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
-        self.transformer = Transformer(config, img_size, vis)
+        self.transformer = Transformer(config, img_size, vis, 200)
         self.decoder = DecoderCup(config)
         self.segmentation_head = SegmentationHead(
             in_channels=config['decoder_channels'][-1],
@@ -383,8 +384,12 @@ class VisionTransformer(nn.Module):
         self.config = config
 
     def forward(self, x):
+        # logger.info(x.size())
         if x.size()[1] == 1:
-            x = x.repeat(1,3,1,1)
+            # x = x.repeat(1,3,1,1)
+            x = x.squeeze(1)  # Removes the channel dimension (shape: [8, 96, 96, 200])
+            x = x.permute(0, 3, 1, 2)  # Permute dimensions to [8, 200, 96, 96]
+
         x, attn_weights, features = self.transformer(x)  # (B, n_patch, hidden)
         x = self.decoder(x, features)
         logits = self.segmentation_head(x)
@@ -451,3 +456,26 @@ CONFIGS = {
 }
 
 
+if __name__ == "__main__":
+    # Set up a simple configuration for testing
+    config = CONFIGS['R50-ViT-B_16']  # You can choose the configuration you want to test
+    img_size = 96  # Example image size (can be changed)
+    num_classes = 30  # Example number of classes (can be changed)
+    zero_head = False  # Whether to initialize the head weights with zeros
+    vis = False  # Whether to visualize the attention weights
+
+    # Instantiate the VisionTransformer model
+    model = VisionTransformer(config, img_size=img_size, num_classes=num_classes, zero_head=zero_head, vis=vis)
+
+    # Print the model architecture
+    print(model)
+
+    # Create a dummy input tensor with the shape (batch_size, channels, height, width)
+    batch_size = 8  # Example batch size
+    input_tensor = torch.randn(batch_size, 200, img_size, img_size)  # Example image with 3 channels (RGB)
+
+    # Forward pass through the model
+    logits = model(input_tensor)
+
+    # Print the shape of the output logits to verify the forward pass
+    print(f"Output shape: {logits.shape}")
