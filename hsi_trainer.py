@@ -81,13 +81,13 @@ def trainer_synapse(args, model, snapshot_path):
             logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
 
             if iter_num % 20 == 0:
-                image = image_batch[1, 0:1, :, :]
-                image = image.squeeze(0)  # Remove the batch dimension, resulting in (H, W, C)
-                image = image.permute(2, 0, 1)  # Convert to CHW (C, H, W)
-                image = (image - image.min()) / (image.max() - image.min())
-                image = get_rgb(image.cpu().numpy())
-                image = torch.from_numpy(image).float()
-                writer.add_image('train/Image', image, iter_num)
+                # image = image_batch[1, 0:1, :, :]
+                # image = image.squeeze(0)  # Remove the batch dimension, resulting in (H, W, C)
+                # image = image.permute(2, 0, 1)  # Convert to CHW (C, H, W)
+                # image = (image - image.min()) / (image.max() - image.min())
+                # image = get_rgb(image.cpu().numpy())
+                # image = torch.from_numpy(image).float()
+                # writer.add_image('train/Image', image, iter_num)
                 outputs = torch.argmax(torch.softmax(outputs, dim=1), dim=1, keepdim=True)
                 writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
                 labs = label_batch[1, ...].unsqueeze(0) * 50
