@@ -81,6 +81,8 @@ def trainer_synapse(args, model, snapshot_path):
 
             if iter_num % 20 == 0:
                 image = image_batch[1, 0:1, :, :]
+                image = image.squeeze(0)  # Remove the batch dimension, resulting in (H, W, C)
+                image = image.permute(3, 1, 2)  # Convert to CHW (C, H, W)
                 image = (image - image.min()) / (image.max() - image.min())
                 writer.add_image('train/Image', image, iter_num)
                 outputs = torch.argmax(torch.softmax(outputs, dim=1), dim=1, keepdim=True)
