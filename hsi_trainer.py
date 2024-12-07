@@ -30,11 +30,17 @@ def trainer_synapse(args, model, snapshot_path):
                                    [RandomGenerator(output_size=[args.img_size, args.img_size])]))
     print("The length of train set is: {}".format(len(db_train)))
 
+    db_val = Synapse_dataset(base_dir=args.root_path, list_dir=args.list_dir, split="val",
+                             transform=transforms.Compose([RandomGenerator(output_size=[args.img_size, args.img_size])]))
+    print("The length of val set is: {}".format(len(db_val)))
+
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
 
     trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True,
                              worker_init_fn=worker_init_fn)
+    valloader = DataLoader(db_val, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True,
+                            worker_init_fn=worker_init_fn)
     if args.n_gpu > 1:
         model = nn.DataParallel(model)
     model.train()
@@ -53,9 +59,9 @@ def trainer_synapse(args, model, snapshot_path):
             image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
             image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
             outputs = model(image_batch)
-            logging.info(f"input shape: {image_batch.shape}")
-            logging.info(f"output shape: {outputs.shape}")
-            logging.info(f"label shape: {label_batch.shape}")
+            # logging.info(f"input shape: {image_batch.shape}")
+            # logging.info(f"output shape: {outputs.shape}")
+            # logging.info(f"label shape: {label_batch.shape}")
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs, label_batch, softmax=True)
             loss = 0.5 * loss_ce + 0.5 * loss_dice
@@ -82,16 +88,53 @@ def trainer_synapse(args, model, snapshot_path):
                 labs = label_batch[1, ...].unsqueeze(0) * 50
                 writer.add_image('train/GroundTruth', labs, iter_num)
 
-        save_interval = 50  # int(max_epoch/6)
-        if epoch_num > int(max_epoch / 2) and (epoch_num + 1) % save_interval == 0:
-            save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
-            torch.save(model.state_dict(), save_mode_path)
-            logging.info("save model to {}".format(save_mode_path))
+        # Validation loop after each epoch
+        model.eval()  # Set model to evaluation mode
+        val_loss = 0.0
+        val_dice_score = 0.0
+        with torch.no_grad():  # No gradients needed for validation
+            for i_batch, sampled_batch in enumerate(valloader):
+                image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
+                image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
 
-        if epoch_num >= max_epoch - 1:
-            save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
+                outputs = model(image_batch)
+                loss_ce = ce_loss(outputs, label_batch[:].long())
+                loss_dice = dice_loss(outputs, label_batch, softmax=True)
+                val_loss += (0.5 * loss_ce + 0.5 * loss_dice).item()
+
+                # Calculate dice score for validation
+                # Assuming DiceLoss provides dice score directly
+                val_dice_score += dice_loss(outputs, label_batch, softmax=True).item()
+
+        # Average validation loss and dice score
+        val_loss /= len(valloader)
+        val_dice_score /= len(valloader)
+
+        # Log validation metrics
+        writer.add_scalar('val/loss', val_loss, epoch_num)
+        writer.add_scalar('val/dice_score', val_dice_score, epoch_num)
+
+        logging.info(f"Epoch {epoch_num} - Validation Loss: {val_loss:.4f}, Validation Dice Score: {val_dice_score:.4f}")
+
+        # Save model if it performs better
+        if val_dice_score > best_performance:
+            best_performance = val_dice_score
+            save_mode_path = os.path.join(snapshot_path, 'best_model.pth')
             torch.save(model.state_dict(), save_mode_path)
-            logging.info("save model to {}".format(save_mode_path))
+            logging.info(f"Saved best model to {save_mode_path}")
+
+        # Save model at intervals
+        save_interval = 50  # int(max_epoch / 6)
+        if epoch_num > int(max_epoch / 2) and (epoch_num + 1) % save_interval == 0:
+            save_mode_path = os.path.join(snapshot_path, f'epoch_{epoch_num}.pth')
+            torch.save(model.state_dict(), save_mode_path)
+            logging.info(f"Saved model to {save_mode_path}")
+
+        # Save final model
+        if epoch_num >= max_epoch - 1:
+            save_mode_path = os.path.join(snapshot_path, f'epoch_{epoch_num}.pth')
+            torch.save(model.state_dict(), save_mode_path)
+            logging.info(f"Saved final model to {save_mode_path}")
             iterator.close()
             break
 
