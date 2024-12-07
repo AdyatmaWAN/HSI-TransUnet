@@ -38,7 +38,7 @@ def trainer_synapse(args, model, snapshot_path):
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
 
-    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True,
+    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True,
                              worker_init_fn=worker_init_fn)
     valloader = DataLoader(db_val, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True,
                             worker_init_fn=worker_init_fn)
