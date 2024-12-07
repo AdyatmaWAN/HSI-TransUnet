@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from utils import DiceLoss
 from torchvision import transforms
+from spectral import get_rgb
 
 def trainer_synapse(args, model, snapshot_path):
     from datasets.dataset_hsi import Synapse_dataset, RandomGenerator
@@ -84,6 +85,7 @@ def trainer_synapse(args, model, snapshot_path):
                 image = image.squeeze(0)  # Remove the batch dimension, resulting in (H, W, C)
                 image = image.permute(2, 0, 1)  # Convert to CHW (C, H, W)
                 image = (image - image.min()) / (image.max() - image.min())
+                image = get_rgb(image)
                 writer.add_image('train/Image', image, iter_num)
                 outputs = torch.argmax(torch.softmax(outputs, dim=1), dim=1, keepdim=True)
                 writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
