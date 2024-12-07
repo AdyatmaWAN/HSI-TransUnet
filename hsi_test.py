@@ -88,7 +88,7 @@ if __name__ == "__main__":
     dataset_config = {
         'Synapse': {
             'Dataset': Synapse_dataset,
-            'volume_path': args.root_path,
+            'volume_path': args.volume_path,
             'list_dir': args.list_dir,
             'num_classes': 30,
             'z_spacing': 0,
