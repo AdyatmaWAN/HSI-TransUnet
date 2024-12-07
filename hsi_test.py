@@ -51,7 +51,7 @@ def inference(args, model, test_save_path=None):
     model.eval()
 
     # Initialize metrics (Assuming two metrics: dice and kappa for each class)
-    metric_list = np.zeros((args.num_classes, 2))  # 2 metrics for each class: dice, kappa
+    metric_list = np.zeros((args.num_classes, 3))  # 3 metrics for each class: dice, kappa, accuracy
 
     # Iterate over the test data
     for i_batch, sampled_batch in tqdm(enumerate(testloader)):
@@ -60,6 +60,8 @@ def inference(args, model, test_save_path=None):
         h, w = image.size()[2:]  # Assuming image shape is [batch_size, channels, height, width]
 
         # Move image to the appropriate device (if not already on GPU)
+        logging.info(f"input shape: {image.shape}")
+        logging.info(f"input shape: {label.shape}")
         image = image.cuda()
         label = label.cuda()
 
