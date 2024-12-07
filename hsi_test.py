@@ -60,8 +60,8 @@ def inference(args, model, test_save_path=None):
         h, w = image.size()[2:]  # Assuming image shape is [batch_size, channels, height, width]
 
         # Move image to the appropriate device (if not already on GPU)
-        image = image.to(args.device)
-        label = label.to(args.device)
+        image = image.cuda()
+        label = label.cuda()
 
         # Forward pass to get predictions
         with torch.no_grad():
